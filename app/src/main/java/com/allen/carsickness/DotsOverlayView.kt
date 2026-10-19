@@ -15,7 +15,7 @@ import kotlin.math.sin
 
 /**
  * YouTube Short ground-truth Vehicle Motion Cues look-alike
- * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.9.
+ * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.10.
  *
  * Motion model (iPhone VMC): one shared offset for the whole column,
  * critically/over-damped exponential follow — continuous glide with
@@ -110,16 +110,16 @@ class DotsOverlayView @JvmOverloads constructor(
         private const val PHASE_ALPHA_AMP = 0.015f
 
         /** Slightly higher deadzone to ignore tiny sensor noise. */
-        private const val INTENSITY_DEADZONE = 0.18f
-        private const val INTENSITY_FULL = 1.6f
+        private const val INTENSITY_DEADZONE = 0.08f
+        private const val INTENSITY_FULL = 1.0f
         /** Slower envelopes so mid-dots glide in, not pop. */
-        private const val INTENSITY_ATTACK = 0.055f
+        private const val INTENSITY_ATTACK = 0.12f
         private const val INTENSITY_RELEASE = 0.028f
 
-        private const val MID_FADE_START = 0.08f
-        private const val MID_FADE_END = 0.48f
-        private const val DENSE_FADE_START = 0.42f
-        private const val DENSE_FADE_END = 0.88f
+        private const val MID_FADE_START = 0.02f
+        private const val MID_FADE_END = 0.28f
+        private const val DENSE_FADE_START = 0.18f
+        private const val DENSE_FADE_END = 0.55f
 
         /** Accel deadzone (m/s²) before mapping into travel — cuts micro-jitter. */
         private const val ACCEL_DEADZONE = 0.06f
@@ -162,9 +162,9 @@ class DotsOverlayView @JvmOverloads constructor(
         i * 1.13f + 0.61f * sin(i * 2.4f + 1.1f)
     }
 
-    private val midStagger: FloatArray = floatArrayOf(0.00f, 0.06f, 0.03f)
+    private val midStagger: FloatArray = floatArrayOf(0.00f, 0.03f, 0.015f)
     private val denseStagger: FloatArray = FloatArray(denseYNorm.size) { i ->
-        (i % 3) * 0.04f
+        (i % 3) * 0.02f
     }
 
     /** Shared column offset — whole cue layer moves as one (iPhone look). */
