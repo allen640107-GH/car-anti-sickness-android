@@ -18,11 +18,13 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Edge-only semi-transparent motion cues (iOS Vehicle Motion Cues style).
+ * iPhone Vehicle Motion Cues look-alike (iOS 18).
  *
- * - Soft cyan/gray-blue cores with inward-stretching radial bloom
- * - Slightly varied radii along each column (larger mid-edge)
- * - Driven by TYPE_LINEAR_ACCELERATION (or high-pass accelerometer)
+ * Soft black / dark-gray feathered dots only on the left and right edges,
+ * moving opposite to linear acceleration so vision matches vestibular motion.
+ *
+ * Visual: dual-layer (faint light halo + dark core) with RadialGradient
+ * feathering and a short inward soft falloff; center content stays clear.
  */
 class DotsOverlayView @JvmOverloads constructor(
     context: Context,
@@ -30,33 +32,52 @@ class DotsOverlayView @JvmOverloads constructor(
 ) : View(context, attrs), SensorEventListener {
 
     companion object {
-        /** ~"More Dots" density on each side. */
-        private const val DOT_COUNT = 11
+        /** ~8–12 per side, matching Apple Almond / Control Center demos. */
+        private const val DOT_COUNT = 10
         /** Soft band as fraction of screen width (inward bloom reach). */
-        private const val BLOOM_FRACTION = 0.12f
-        private const val EDGE_INSET_FRACTION = 0.028f
-        private const val TOP_PAD_FRACTION = 0.08f
-        private const val MAX_TRAVEL_X = 36f
-        private const val MAX_TRAVEL_Y = 28f
-        private const val GAIN = 9.5f
-        private const val SMOOTH = 0.28f
-        /** Gravity low-pass for accelerometer fallback. */
+        private const val BAND_FRACTION = 0.085f
+        private const val EDGE_INSET_FRACTION = 0.022f
+        private const val TOP_PAD_FRACTION = 0.07f
+        private const val MAX_TRAVEL_X = 48f
+        private const val MAX_TRAVEL_Y = 36f
+        /** High enough that 強制顯示 + tilt/shake clearly moves dots. */
+        private const val GAIN = 14f
+        private const val SMOOTH = 0.32f
         private const val GRAVITY_ALPHA = 0.85f
-        // iOS-like light cyan / gray-blue
-        private val CORE_RGB = intArrayOf(0xB8, 0xE2, 0xF0)
-        private val HALO_RGB = intArrayOf(0x9E, 0xD4, 0xE8)
+
+        // Soft charcoal core (iOS dark dots)
+        private val CORE_RGB = intArrayOf(0x1A, 0x1A, 0x1C)
+        // Faint light halo under dark core for contrast on dark UIs
+        private val HALO_RGB = intArrayOf(0xF2, 0xF2, 0xF5)
     }
 
-    private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    private val bloomPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
-    /** Per-index organic size multipliers (stable, not random each frame). */
+    /** Organic size multipliers (stable across frames). */
     private val sizeJitter: FloatArray = FloatArray(DOT_COUNT) { i ->
-        0.78f + 0.28f * (0.5f + 0.5f * sin(i * 2.399f + 0.7f))
+        0.72f + 0.36f * (0.5f + 0.5f * sin(i * 2.713f + 1.1f))
+    }
+
+    /**
+     * Irregular vertical spacing (not a ruler). Values in [0,1] along usable height.
+     * Built once so L/R columns share the same organic rhythm.
+     */
+    private val yNorm: FloatArray = run {
+        val raw = FloatArray(DOT_COUNT) { i ->
+            val t = if (DOT_COUNT == 1) 0.5f else i / (DOT_COUNT - 1).toFloat()
+            // Irregular wobble; keep endpoints near top/bottom pads
+            val wobble = 0.028f * sin(i * 3.37f + 0.4f) + 0.018f * sin(i * 5.91f)
+            (t + wobble).coerceIn(0.02f, 0.98f)
+        }
+        // Ensure strictly increasing after wobble
+        for (i in 1 until DOT_COUNT) {
+            if (raw[i] <= raw[i - 1] + 0.035f) {
+                raw[i] = (raw[i - 1] + 0.035f).coerceAtMost(0.98f)
+            }
+        }
+        raw
     }
 
     private var offsetX = 0f
@@ -68,11 +89,10 @@ class DotsOverlayView @JvmOverloads constructor(
     private var running = false
     private var usingLinearAccel = false
 
-    // High-pass gravity estimate when falling back to raw accelerometer
     private val gravity = FloatArray(3)
     private var gravityInitialized = false
 
-    // Subtle mirrored vertical parallax between columns
+    /** Subtle opposite vertical parallax between L/R columns. */
     private var parallaxY = 0f
 
     fun startSensors() {
@@ -130,11 +150,14 @@ class DotsOverlayView @JvmOverloads constructor(
             }
             else -> return
         }
-        // Device upright: lateral → X shift; forward/back → Y
+        // Vestibular match (opposite to acceleration):
+        //   accel right → dots left; left → right
+        //   accel up/forward → dots down; brake/down → dots up
+        // Sensor +X = device right; Canvas +X = right → negate for opposite.
+        // Sensor +Y = device up; Canvas +Y = down → keep sign for opposite.
         targetX = (-ax * GAIN).coerceIn(-MAX_TRAVEL_X, MAX_TRAVEL_X)
-        targetY = (ay * GAIN * 0.55f).coerceIn(-MAX_TRAVEL_Y, MAX_TRAVEL_Y)
-        // Soft opposite vertical parallax between L/R columns
-        parallaxY = (ax * GAIN * 0.18f).coerceIn(-10f, 10f)
+        targetY = (ay * GAIN * 0.72f).coerceIn(-MAX_TRAVEL_Y, MAX_TRAVEL_Y)
+        parallaxY = (ax * GAIN * 0.16f).coerceIn(-12f, 12f)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -148,23 +171,24 @@ class DotsOverlayView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val bloomReach = max(48f, w * BLOOM_FRACTION)
-        val edgeInset = max(14f, w * EDGE_INSET_FRACTION)
+        val band = max(36f, w * BAND_FRACTION)
+        val edgeInset = max(12f, w * EDGE_INSET_FRACTION)
         val topPad = h * TOP_PAD_FRACTION
         val usable = h - topPad * 2f
-        val baseCoreR = min(max(3.2f, edgeInset * 0.38f), 6.5f)
+        // Soft circular dots — slightly larger mid-edge
+        val baseR = min(max(5.5f, edgeInset * 0.55f), 11f)
 
         for (i in 0 until DOT_COUNT) {
-            val t = if (DOT_COUNT == 1) 0.5f else i / (DOT_COUNT - 1).toFloat()
-            // Larger near mid-edge, smaller toward corners + organic jitter
-            val midBoost = 1f - abs(t - 0.5f) * 0.7f
-            val coreR = baseCoreR * midBoost * sizeJitter[i]
-            val bloomR = bloomReach * (0.55f + 0.45f * midBoost) * (0.9f + 0.15f * sizeJitter[i])
+            val t = yNorm[i]
+            val midBoost = 1f - abs(t - 0.5f) * 0.65f
+            val coreR = baseR * midBoost * sizeJitter[i]
+            // Feather radius: soft bloom, short inward reach (~band)
+            val featherR = band * (0.42f + 0.38f * midBoost) * (0.88f + 0.18f * sizeJitter[i])
 
-            // Alpha stronger mid-column (peripheral contrast feel)
-            val midWeight = 1f - abs(t - 0.5f) * 1.15f
-            val coreAlpha = (0x55 + (midWeight * 0x55).toInt()).coerceIn(0x48, 0xB0)
-            val bloomAlpha = (0x28 + (midWeight * 0x38).toInt()).coerceIn(0x18, 0x70)
+            // Stronger mid-column, softer toward corners
+            val midWeight = (1f - abs(t - 0.5f) * 1.05f).coerceIn(0.35f, 1f)
+            val coreAlpha = (0x58 + (midWeight * 0x48).toInt()).coerceIn(0x40, 0xA8)
+            val haloAlpha = (0x18 + (midWeight * 0x1C).toInt()).coerceIn(0x10, 0x38)
 
             val yBase = topPad + usable * t
             val yLeft = yBase + offsetY + parallaxY
@@ -173,60 +197,58 @@ class DotsOverlayView @JvmOverloads constructor(
             val lx = edgeInset + offsetX
             val rx = w - edgeInset + offsetX
 
-            drawCue(canvas, lx, yLeft, coreR, bloomR, coreAlpha, bloomAlpha, inwardRight = true)
-            drawCue(canvas, rx, yRight, coreR, bloomR, coreAlpha, bloomAlpha, inwardRight = false)
+            drawCue(canvas, lx, yLeft, coreR, featherR, coreAlpha, haloAlpha, inwardRight = true)
+            drawCue(canvas, rx, yRight, coreR, featherR, coreAlpha, haloAlpha, inwardRight = false)
         }
 
         if (running) postInvalidateOnAnimation()
     }
 
     /**
-     * Core disc + soft radial bloom stretched toward screen center.
-     * @param inwardRight true for left-edge cues (bloom extends +X); false for right-edge.
+     * Dual-layer soft cue: faint light halo + dark charcoal core, both feathered.
+     * Opacity stronger at the physical edge; soft falloff extends slightly inward.
      */
     private fun drawCue(
         canvas: Canvas,
         cx: Float,
         cy: Float,
         coreR: Float,
-        bloomR: Float,
+        featherR: Float,
         coreAlpha: Int,
-        bloomAlpha: Int,
+        haloAlpha: Int,
         inwardRight: Boolean
     ) {
-        // Elongated inward bloom: scale X so most of the glow sits toward content
-        val stretchX = 2.6f
+        // Mild X stretch so soft falloff fills the edge band toward content
+        val stretchX = 1.85f
+        val nudge = if (inwardRight) featherR * 0.10f else -featherR * 0.10f
+
         canvas.save()
-        canvas.translate(cx, cy)
-        // Nudge bloom center slightly inward so soft falloff fills the edge band
-        val nudge = if (inwardRight) bloomR * 0.12f else -bloomR * 0.12f
-        canvas.translate(nudge, 0f)
+        canvas.translate(cx + nudge, cy)
         canvas.scale(stretchX, 1f)
 
-        val haloColor = Color.argb(bloomAlpha, HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
-        val midColor = Color.argb((bloomAlpha * 0.45f).toInt(), HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
-        bloomPaint.shader = RadialGradient(
-            0f, 0f, bloomR / stretchX,
-            intArrayOf(haloColor, midColor, Color.TRANSPARENT),
-            floatArrayOf(0f, 0.35f, 1f),
+        // 1) Faint light halo (helps dark cores read on dark UIs)
+        val haloOuter = Color.argb(haloAlpha, HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
+        val haloMid = Color.argb((haloAlpha * 0.4f).toInt(), HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
+        paint.shader = RadialGradient(
+            0f, 0f, featherR / stretchX,
+            intArrayOf(haloOuter, haloMid, Color.TRANSPARENT),
+            floatArrayOf(0f, 0.4f, 1f),
             Shader.TileMode.CLAMP
         )
-        canvas.drawCircle(0f, 0f, bloomR / stretchX, bloomPaint)
-        bloomPaint.shader = null
+        canvas.drawCircle(0f, 0f, featherR / stretchX, paint)
+
+        // 2) Dark soft core with feathered edge (main iOS look)
+        val darkCore = Color.argb(coreAlpha, CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
+        val darkMid = Color.argb((coreAlpha * 0.45f).toInt(), CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
+        val darkR = max(coreR * 2.4f, featherR * 0.55f) / stretchX
+        paint.shader = RadialGradient(
+            0f, 0f, darkR,
+            intArrayOf(darkCore, darkMid, Color.TRANSPARENT),
+            floatArrayOf(0f, 0.38f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(0f, 0f, darkR, paint)
+        paint.shader = null
         canvas.restore()
-
-        // Brighter soft core (slight secondary halo for Apple-like softness)
-        val softCore = Color.argb((coreAlpha * 0.35f).toInt(), CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
-        corePaint.shader = RadialGradient(
-            cx, cy, coreR * 2.1f,
-            intArrayOf(softCore, Color.TRANSPARENT),
-            floatArrayOf(0f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(cx, cy, coreR * 2.1f, corePaint)
-
-        corePaint.shader = null
-        corePaint.color = Color.argb(coreAlpha, CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
-        canvas.drawCircle(cx, cy, coreR, corePaint)
     }
 }
