@@ -15,13 +15,13 @@ import kotlin.math.sin
 
 /**
  * YouTube Short ground-truth Vehicle Motion Cues look-alike
- * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.5.
+ * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.6.
  *
  * Motion model (iPhone VMC): one shared offset for the whole column,
  * critically/over-damped exponential follow — continuous glide with
  * inertial lag, NO spring bounce/overshoot. Calm = nearly still sparse
- * edge column; motion = soft mid/dense fade-in. Dual-layer: near-black
- * core + dark-grey soft feather (not bright white halo) — Short stills.
+ * edge column; motion = soft mid/dense fade-in. Dual-layer: light halo
+ * (#F5F5F5) under near-black core — readable on light and dark UIs.
  *
  * Idle: ~4 primary dual-layer dots per L/R edge. Mid intercalated at
  * ~5.5% width inward; size ratios ~93% L / ~72% R. Soft envelopes.
@@ -46,8 +46,8 @@ class DotsOverlayView @JvmOverloads constructor(
         private const val DENSE_SIZE_RATIO_LEFT = 0.70f
         private const val DENSE_SIZE_RATIO_RIGHT = 0.55f
 
-        /** Soft dark feather slightly larger than core (iPhone soft edge). */
-        private const val HALO_SCALE = 1.22f
+        /** Soft light halo slightly larger than core (contrast ring). */
+        private const val HALO_SCALE = 1.28f
 
         /** Slight primary swell under motion. */
         private const val PRIMARY_SWELL = 0.08f
@@ -63,10 +63,10 @@ class DotsOverlayView @JvmOverloads constructor(
         private const val MID_INWARD_FRACTION = 0.055f
         private const val DENSE_INWARD_FRACTION = 0.075f
 
-        private const val MAX_TRAVEL_Y_DP = 72f
-        private const val MAX_TRAVEL_X_DP = 10f
-        private const val GAIN_Y = 30f
-        private const val GAIN_X = 6.0f
+        private const val MAX_TRAVEL_Y_DP = 144f
+        private const val MAX_TRAVEL_X_DP = 20f
+        private const val GAIN_Y = 60f
+        private const val GAIN_X = 12.0f
 
         /**
          * Exponential smoothing toward sensor target (per frame @~60fps).
@@ -92,11 +92,11 @@ class DotsOverlayView @JvmOverloads constructor(
         private const val IDLE_PERIOD_MS_FAST = 5500f
 
         /** Near-black core — high rest alpha so force-show is obvious. */
-        private const val CORE_ALPHA_BASE = 0.90f
-        private const val CORE_ALPHA_MAX = 0.97f
-        /** Soft dark-grey feather (not white ring); lower alpha = soft edge. */
-        private const val HALO_ALPHA_BASE = 0.28f
-        private const val HALO_ALPHA_MAX = 0.40f
+        private const val CORE_ALPHA_BASE = 0.88f
+        private const val CORE_ALPHA_MAX = 0.96f
+        /** Soft light halo — readable on dark Android chrome. */
+        private const val HALO_ALPHA_BASE = 0.55f
+        private const val HALO_ALPHA_MAX = 0.70f
 
         private const val MID_ALPHA_MAX = 0.90f
         private const val DENSE_ALPHA_MAX = 0.75f
@@ -124,14 +124,13 @@ class DotsOverlayView @JvmOverloads constructor(
 
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        // iPhone VMC stills: near-black core (~#0A0A0A / sampled ~#141418)
         color = Color.rgb(0x0A, 0x0A, 0x0A)
     }
 
     private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        // Soft dark feather (sampled stills ~#1A1A1E / grey~26–40), NOT #F5F5F5
-        color = Color.rgb(0x1A, 0x1A, 0x1E)
+        // Light outer ring under dark core (v1.1.3/1.1.4 dual-layer)
+        color = Color.rgb(0xF5, 0xF5, 0xF5)
     }
 
     private val primaryYNorm: FloatArray = floatArrayOf(0.12f, 0.38f, 0.61f, 0.86f)
