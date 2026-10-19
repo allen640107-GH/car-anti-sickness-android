@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">車內防暈助手</string>
+    <string name="notif_channel_name">行駛監控</string>
+    <string name="notif_channel_desc">背景偵測行駛並顯示邊緣提示點</string>
+    <string name="notif_title">車內防暈助手執行中</string>
+    <string name="notif_text_idle">監控中（尚未偵測到行駛）</string>
+    <string name="notif_text_driving">行駛中 — 邊緣提示點已開啟</string>
+    <string name="notif_text_paused">已暫停</string>
+    <string name="notif_action_pause">暫停</string>
+    <string name="notif_action_resume">繼續</string>
+    <string name="notif_action_stop">停止</string>
+</resources>
