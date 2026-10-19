@@ -15,7 +15,7 @@ import kotlin.math.sin
 
 /**
  * YouTube Short ground-truth Vehicle Motion Cues look-alike
- * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.8.
+ * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.9.
  *
  * Motion model (iPhone VMC): one shared offset for the whole column,
  * critically/over-damped exponential follow — continuous glide with
@@ -69,9 +69,9 @@ class DotsOverlayView @JvmOverloads constructor(
          * Drawn X is clamped to ±this from each edge base — was previously
          * locked to a ~1-diameter band so offsetX was invisible.
          */
-        private const val MAX_TRAVEL_X_DP = 180f
+        private const val MAX_TRAVEL_X_DP = 540f
         private const val GAIN_Y = 540f
-        private const val GAIN_X = 108.0f
+        private const val GAIN_X = 324.0f
 
         /**
          * Exponential smoothing toward sensor target (per frame @~60fps).
@@ -318,7 +318,7 @@ class DotsOverlayView @JvmOverloads constructor(
         val rightBaseX = w - edgeInset
         // Allow real horizontal glide (±MAX_TRAVEL_X from edge base).
         // Old marginMax clamp was ~1 diameter wide → offsetX looked like "only Y".
-        val xTravel = (MAX_TRAVEL_X_DP * density).coerceAtMost(w * 0.42f)
+        val xTravel = (MAX_TRAVEL_X_DP * density).coerceAtMost(w * 0.48f) // ~full half-width; L/R stay on own side
 
         val coreA = CORE_ALPHA_BASE + (CORE_ALPHA_MAX - CORE_ALPHA_BASE) * intensity
         val haloA = HALO_ALPHA_BASE + (HALO_ALPHA_MAX - HALO_ALPHA_BASE) * intensity
@@ -410,10 +410,10 @@ class DotsOverlayView @JvmOverloads constructor(
         // Clamp to ±xTravel from base so L/R stay near edges but X is visible.
         val lx = (leftBaseX + offsetX + idleX).coerceIn(
             (leftBaseX - xTravel).coerceAtLeast(radiusL),
-            (leftBaseX + xTravel).coerceAtMost(w * 0.45f)
+            (leftBaseX + xTravel).coerceAtMost(w * 0.50f - radiusL)
         )
         val rx = (rightBaseX + offsetX - idleX).coerceIn(
-            (rightBaseX - xTravel).coerceAtLeast(w * 0.55f),
+            (rightBaseX - xTravel).coerceAtLeast(w * 0.50f + radiusR),
             (rightBaseX + xTravel).coerceAtMost(w - radiusR)
         )
 
