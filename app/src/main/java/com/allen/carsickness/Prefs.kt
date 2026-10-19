@@ -9,6 +9,8 @@ object Prefs {
     private const val KEY_MONITORING = "monitoring"
     private const val KEY_PAUSED = "paused"
     private const val KEY_FORCE = "force_overlay"
+    /** Keep edge dots visible while FGS runs (until pause/stop) — prevents mid-trip vanish. */
+    private const val KEY_KEEP_OVERLAY = "keep_overlay_while_monitoring"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
@@ -26,4 +28,8 @@ object Prefs {
 
     fun isForceOverlay(ctx: Context) = sp(ctx).getBoolean(KEY_FORCE, false)
     fun setForceOverlay(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(KEY_FORCE, v).apply()
+
+    fun isKeepOverlayWhileMonitoring(ctx: Context) = sp(ctx).getBoolean(KEY_KEEP_OVERLAY, true)
+    fun setKeepOverlayWhileMonitoring(ctx: Context, v: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_KEEP_OVERLAY, v).apply()
 }

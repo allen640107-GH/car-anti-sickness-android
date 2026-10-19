@@ -5,9 +5,32 @@
     <string name="notif_channel_desc">背景偵測行駛並顯示邊緣提示點</string>
     <string name="notif_title">車內防暈助手執行中</string>
     <string name="notif_text_idle">監控中（尚未偵測到行駛）</string>
-    <string name="notif_text_driving">行駛中 — 邊緣提示點已開啟</string>
+    <string name="notif_text_driving">提示點開啟中</string>
     <string name="notif_text_paused">已暫停</string>
     <string name="notif_action_pause">暫停</string>
     <string name="notif_action_resume">繼續</string>
     <string name="notif_action_stop">停止</string>
+
+    <string name="btn_recheck_start">重新檢查權限並啟動</string>
+    <string name="btn_pause">暫停</string>
+    <string name="btn_resume">繼續</string>
+    <string name="toast_need_overlay">請開啟「顯示在其他應用程式上層」</string>
+    <string name="toast_started">已開始監控，可切換至其他 App</string>
+    <string name="toast_force">已強制顯示邊緣提示點</string>
+    <string name="toast_battery_hint">建議關閉電池優化，避免提示點中途消失</string>
+    <string name="toast_battery_manual">請至系統設定關閉本 App 的電池優化</string>
+    <string name="perm_overlay_ok">① 顯示在其他應用程式上層：已授權 ✓</string>
+    <string name="perm_overlay_no">① 顯示在其他應用程式上層：未授權（必填）</string>
+    <string name="perm_loc_ok">② 定位：已授權 ✓</string>
+    <string name="perm_loc_no">② 定位：未授權（自動偵測用，可稍後）</string>
+    <string name="perm_notif_ok">③ 通知：已授權 ✓</string>
+    <string name="perm_notif_no">③ 通知：未授權</string>
+    <string name="status_idle">尚未啟動</string>
+    <string name="status_paused">已暫停</string>
+    <string name="status_driving">提示點開啟中</string>
+    <string name="status_monitoring">監控中（等待行駛）</string>
+    <string name="speed_fmt">速度：%.1f km/h</string>
+    <string name="speed_none">速度：—</string>
+    <string name="btn_battery">關閉電池優化（避免中途消失）</string>
+    <string name="switch_keep">監控期間持續顯示提示點（建議開啟）</string>
 </resources>

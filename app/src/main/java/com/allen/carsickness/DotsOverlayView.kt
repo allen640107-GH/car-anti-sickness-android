@@ -15,7 +15,7 @@ import kotlin.math.sin
 
 /**
  * YouTube Short ground-truth Vehicle Motion Cues look-alike
- * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.11.
+ * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.12.
  *
  * Motion model (iPhone VMC): one shared offset for the whole column,
  * critically/over-damped exponential follow — continuous glide with
@@ -186,9 +186,13 @@ class DotsOverlayView @JvmOverloads constructor(
 
     private var animStartMs = 0L
 
-    fun startSensors() {
+    /** When true, Service feeds accel via [feedLinearAccel]; View skips own sensors. */
+    private var externalFeed = false
+
+    fun startSensors(preferExternal: Boolean = false) {
         if (running) return
         running = true
+        externalFeed = preferExternal
         gravityInitialized = false
         intensity = 0f
         targetIntensity = 0f
@@ -199,14 +203,18 @@ class DotsOverlayView @JvmOverloads constructor(
         offsetX = 0f
         offsetY = 0f
         animStartMs = System.currentTimeMillis()
-        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val sm = sensorManager ?: return
-        val linear = sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
-        if (linear != null) {
-            sm.registerListener(this, linear, SensorManager.SENSOR_DELAY_GAME)
-        } else {
-            sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-                sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        if (!preferExternal) {
+            sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val sm = sensorManager
+            if (sm != null) {
+                val linear = sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+                if (linear != null) {
+                    sm.registerListener(this, linear, SensorManager.SENSOR_DELAY_GAME)
+                } else {
+                    sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+                        sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+                    }
+                }
             }
         }
         postInvalidateOnAnimation()
@@ -214,8 +222,20 @@ class DotsOverlayView @JvmOverloads constructor(
 
     fun stopSensors() {
         running = false
+        externalFeed = false
         sensorManager?.unregisterListener(this)
         sensorManager = null
+    }
+
+    /** Service-side GAME-rate accel (linear, gravity already removed if possible). */
+    fun feedLinearAccel(ax: Float, ay: Float) {
+        if (!running) return
+        applyAccel(ax, ay)
+    }
+
+    /** Keep drawing even if OEM throttles View sensor callbacks. */
+    fun tickFrame() {
+        if (running) postInvalidateOnAnimation()
     }
 
     override fun onDetachedFromWindow() {
@@ -224,7 +244,7 @@ class DotsOverlayView @JvmOverloads constructor(
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null) return
+        if (event == null || externalFeed) return
         val ax: Float
         val ay: Float
         when (event.sensor.type) {
@@ -248,7 +268,10 @@ class DotsOverlayView @JvmOverloads constructor(
             }
             else -> return
         }
+        applyAccel(ax, ay)
+    }
 
+    private fun applyAccel(ax: Float, ay: Float) {
         val axDz = deadzone(ax, ACCEL_DEADZONE)
         val ayDz = deadzone(ay, ACCEL_DEADZONE)
 

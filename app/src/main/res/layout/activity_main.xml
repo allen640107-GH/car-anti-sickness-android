@@ -137,11 +137,30 @@
             android:textColor="@color/text_secondary"
             android:visibility="gone" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBattery"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/btn_battery"
+            android:textColor="@color/warn"
+            android:visibility="gone" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchKeep"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:checked="true"
+            android:text="@string/switch_keep"
+            android:textColor="@color/text_primary" />
+
         <com.google.android.material.switchmaterial.SwitchMaterial
             android:id="@+id/switchAuto"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:checked="true"
             android:text="自動偵測行駛（GPS + 加速度）"
             android:textColor="@color/text_primary" />
@@ -159,7 +178,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="使用方式：授權後將本 App 留在背景，開啟 Line、Chrome 等其他 App。當 GPS 速度約達 15–25 km/h 並持續數秒，左右邊緣會出現半透明提示點。可從通知列暫停。"
+            android:text="使用方式：點「開始設定並啟動」授權疊加層後即可背景執行。建議關閉電池優化，並開啟「監控期間持續顯示」。可從通知列暫停／停止。強制顯示不需定位。"
             android:textColor="@color/text_secondary"
             android:textSize="13sp"
             android:lineSpacingMultiplier="1.3" />
