@@ -15,7 +15,7 @@ import kotlin.math.sin
 
 /**
  * YouTube Short ground-truth Vehicle Motion Cues look-alike
- * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.10.
+ * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.11.
  *
  * Motion model (iPhone VMC): one shared offset for the whole column,
  * critically/over-damped exponential follow — continuous glide with
@@ -63,15 +63,15 @@ class DotsOverlayView @JvmOverloads constructor(
         private const val MID_INWARD_FRACTION = 0.055f
         private const val DENSE_INWARD_FRACTION = 0.075f
 
-        private const val MAX_TRAVEL_Y_DP = 1296f
+        private const val MAX_TRAVEL_Y_DP = 648f
         /**
          * Horizontal travel must be large enough to FEEL (Allen: 左右也要滑動).
          * Drawn X is clamped to ±this from each edge base — was previously
          * locked to a ~1-diameter band so offsetX was invisible.
          */
-        private const val MAX_TRAVEL_X_DP = 540f
-        private const val GAIN_Y = 540f
-        private const val GAIN_X = 324.0f
+        private const val MAX_TRAVEL_X_DP = 270f
+        private const val GAIN_Y = 270f
+        private const val GAIN_X = 162.0f
 
         /**
          * Exponential smoothing toward sensor target (per frame @~60fps).
@@ -79,10 +79,10 @@ class DotsOverlayView @JvmOverloads constructor(
          * Higher FOLLOW = snappier; keep low for iPhone-like viscous glide.
          * No velocity → no overshoot.
          */
-        private const val OFFSET_FOLLOW = 0.085f
+        private const val OFFSET_FOLLOW = 0.0425f
 
         /** Low-pass on raw accel→target before OFFSET_FOLLOW (kills micro-jitter). */
-        private const val TARGET_LP = 0.12f
+        private const val TARGET_LP = 0.06f
 
         private const val GRAVITY_ALPHA = 0.92f
 
