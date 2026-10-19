@@ -20,11 +20,9 @@ import kotlin.math.sin
 /**
  * iPhone Vehicle Motion Cues look-alike (iOS 18).
  *
- * Soft black / dark-gray feathered dots only on the left and right edges,
- * moving opposite to linear acceleration so vision matches vestibular motion.
- *
- * Visual: dual-layer (faint light halo + dark core) with RadialGradient
- * feathering and a short inward soft falloff; center content stays clear.
+ * Soft black / dark-gray feathered dots only on the left and right edges.
+ * Intrinsic idle drift + breathe (always animated) combined with motion that
+ * is opposite to linear acceleration (vestibular match).
  */
 class DotsOverlayView @JvmOverloads constructor(
     context: Context,
@@ -32,46 +30,56 @@ class DotsOverlayView @JvmOverloads constructor(
 ) : View(context, attrs), SensorEventListener {
 
     companion object {
-        /** ~8–12 per side, matching Apple Almond / Control Center demos. */
+        /** ~8–12 per side (Apple Almond / Control Center demos). */
         private const val DOT_COUNT = 10
-        /** Soft band as fraction of screen width (inward bloom reach). */
-        private const val BAND_FRACTION = 0.085f
-        private const val EDGE_INSET_FRACTION = 0.022f
+        /** Soft peripheral band (~6–10% width). */
+        private const val EDGE_INSET_FRACTION = 0.018f
         private const val TOP_PAD_FRACTION = 0.07f
         private const val MAX_TRAVEL_X = 48f
         private const val MAX_TRAVEL_Y = 36f
-        /** High enough that 強制顯示 + tilt/shake clearly moves dots. */
         private const val GAIN = 14f
         private const val SMOOTH = 0.32f
         private const val GRAVITY_ALPHA = 0.85f
 
-        // Soft charcoal core (iOS dark dots)
+        /** iPhone-like core radius in dp (small black edge dots). */
+        private const val CORE_DP_MIN = 4.0f
+        private const val CORE_DP_MAX = 7.5f
+        /** Soft halo extends a little past the core. */
+        private const val HALO_SCALE = 2.6f
+
+        // Idle animation (always on — iOS cues are never frozen)
+        private const val IDLE_DRIFT_X_DP = 2.2f
+        private const val IDLE_DRIFT_Y_DP = 5.5f
+        private const val IDLE_BREATHE = 0.08f
+        private const val IDLE_PERIOD_MS = 4200f
+
         private val CORE_RGB = intArrayOf(0x1A, 0x1A, 0x1C)
-        // Faint light halo under dark core for contrast on dark UIs
         private val HALO_RGB = intArrayOf(0xF2, 0xF2, 0xF5)
     }
+
+    private val density = resources.displayMetrics.density
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
-    /** Organic size multipliers (stable across frames). */
+    /** Organic size multipliers (stable). Range keeps cores ~4–8 dp. */
     private val sizeJitter: FloatArray = FloatArray(DOT_COUNT) { i ->
-        0.72f + 0.36f * (0.5f + 0.5f * sin(i * 2.713f + 1.1f))
+        0.78f + 0.28f * (0.5f + 0.5f * sin(i * 2.713f + 1.1f))
     }
 
-    /**
-     * Irregular vertical spacing (not a ruler). Values in [0,1] along usable height.
-     * Built once so L/R columns share the same organic rhythm.
-     */
+    /** Per-dot phase offsets for idle drift (not synchronized). */
+    private val idlePhase: FloatArray = FloatArray(DOT_COUNT) { i ->
+        i * 0.73f + 0.4f * sin(i * 1.9f)
+    }
+
+    /** Irregular vertical spacing in [0,1]. */
     private val yNorm: FloatArray = run {
         val raw = FloatArray(DOT_COUNT) { i ->
             val t = if (DOT_COUNT == 1) 0.5f else i / (DOT_COUNT - 1).toFloat()
-            // Irregular wobble; keep endpoints near top/bottom pads
             val wobble = 0.028f * sin(i * 3.37f + 0.4f) + 0.018f * sin(i * 5.91f)
             (t + wobble).coerceIn(0.02f, 0.98f)
         }
-        // Ensure strictly increasing after wobble
         for (i in 1 until DOT_COUNT) {
             if (raw[i] <= raw[i - 1] + 0.035f) {
                 raw[i] = (raw[i - 1] + 0.035f).coerceAtMost(0.98f)
@@ -91,14 +99,15 @@ class DotsOverlayView @JvmOverloads constructor(
 
     private val gravity = FloatArray(3)
     private var gravityInitialized = false
-
-    /** Subtle opposite vertical parallax between L/R columns. */
     private var parallaxY = 0f
+
+    private var animStartMs = 0L
 
     fun startSensors() {
         if (running) return
         running = true
         gravityInitialized = false
+        animStartMs = System.currentTimeMillis()
         sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val sm = sensorManager ?: return
         val linear = sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
@@ -150,11 +159,7 @@ class DotsOverlayView @JvmOverloads constructor(
             }
             else -> return
         }
-        // Vestibular match (opposite to acceleration):
-        //   accel right → dots left; left → right
-        //   accel up/forward → dots down; brake/down → dots up
-        // Sensor +X = device right; Canvas +X = right → negate for opposite.
-        // Sensor +Y = device up; Canvas +Y = down → keep sign for opposite.
+        // Opposite to acceleration (vestibular match)
         targetX = (-ax * GAIN).coerceIn(-MAX_TRAVEL_X, MAX_TRAVEL_X)
         targetY = (ay * GAIN * 0.72f).coerceIn(-MAX_TRAVEL_Y, MAX_TRAVEL_Y)
         parallaxY = (ax * GAIN * 0.16f).coerceIn(-12f, 12f)
@@ -171,31 +176,45 @@ class DotsOverlayView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val band = max(36f, w * BAND_FRACTION)
-        val edgeInset = max(12f, w * EDGE_INSET_FRACTION)
+        val edgeInset = max(8f * density, w * EDGE_INSET_FRACTION)
         val topPad = h * TOP_PAD_FRACTION
         val usable = h - topPad * 2f
-        // Soft circular dots — slightly larger mid-edge
-        val baseR = min(max(5.5f, edgeInset * 0.55f), 11f)
+
+        // Small iPhone-like cores: ~4–7.5 dp, mid-edge slightly larger
+        val coreDpBase = (CORE_DP_MIN + CORE_DP_MAX) * 0.5f
+        val baseR = coreDpBase * density
+
+        val idleDriftXMax = IDLE_DRIFT_X_DP * density
+        val idleDriftYMax = IDLE_DRIFT_Y_DP * density
+        val elapsed = if (animStartMs == 0L) 0f
+        else (System.currentTimeMillis() - animStartMs).toFloat()
+        val tau = (elapsed / IDLE_PERIOD_MS) * (Math.PI.toFloat() * 2f)
 
         for (i in 0 until DOT_COUNT) {
             val t = yNorm[i]
-            val midBoost = 1f - abs(t - 0.5f) * 0.65f
-            val coreR = baseR * midBoost * sizeJitter[i]
-            // Feather radius: soft bloom, short inward reach (~band)
-            val featherR = band * (0.42f + 0.38f * midBoost) * (0.88f + 0.18f * sizeJitter[i])
+            val midBoost = 1f - abs(t - 0.5f) * 0.55f
+            val phase = idlePhase[i]
 
-            // Stronger mid-column, softer toward corners
+            // Intrinsic idle: soft vertical drift + slight inward breathe
+            val idleY = idleDriftYMax * sin(tau * 0.85f + phase)
+            val idleX = idleDriftXMax * sin(tau * 0.55f + phase * 1.3f)
+            val breathe = 1f + IDLE_BREATHE * sin(tau * 1.1f + phase * 0.7f)
+
+            val coreR = (baseR * midBoost * sizeJitter[i] * breathe)
+                .coerceIn(CORE_DP_MIN * density * 0.85f, CORE_DP_MAX * density * 1.15f)
+            val featherR = coreR * HALO_SCALE
+
             val midWeight = (1f - abs(t - 0.5f) * 1.05f).coerceIn(0.35f, 1f)
-            val coreAlpha = (0x58 + (midWeight * 0x48).toInt()).coerceIn(0x40, 0xA8)
-            val haloAlpha = (0x18 + (midWeight * 0x1C).toInt()).coerceIn(0x10, 0x38)
+            val coreAlpha = (0x55 + (midWeight * 0x40).toInt()).coerceIn(0x40, 0x98)
+            val haloAlpha = (0x14 + (midWeight * 0x18).toInt()).coerceIn(0x0C, 0x30)
 
             val yBase = topPad + usable * t
-            val yLeft = yBase + offsetY + parallaxY
-            val yRight = yBase + offsetY - parallaxY
+            val yLeft = yBase + offsetY + parallaxY + idleY
+            val yRight = yBase + offsetY - parallaxY - idleY * 0.85f
 
-            val lx = edgeInset + offsetX
-            val rx = w - edgeInset + offsetX
+            // Idle X drifts slightly inward on each side
+            val lx = edgeInset + offsetX + idleX
+            val rx = w - edgeInset + offsetX - idleX
 
             drawCue(canvas, lx, yLeft, coreR, featherR, coreAlpha, haloAlpha, inwardRight = true)
             drawCue(canvas, rx, yRight, coreR, featherR, coreAlpha, haloAlpha, inwardRight = false)
@@ -218,33 +237,32 @@ class DotsOverlayView @JvmOverloads constructor(
         haloAlpha: Int,
         inwardRight: Boolean
     ) {
-        // Mild X stretch so soft falloff fills the edge band toward content
-        val stretchX = 1.85f
-        val nudge = if (inwardRight) featherR * 0.10f else -featherR * 0.10f
+        val stretchX = 1.55f
+        val nudge = if (inwardRight) featherR * 0.08f else -featherR * 0.08f
 
         canvas.save()
         canvas.translate(cx + nudge, cy)
         canvas.scale(stretchX, 1f)
 
-        // 1) Faint light halo (helps dark cores read on dark UIs)
+        // 1) Faint light halo (contrast on dark UIs)
         val haloOuter = Color.argb(haloAlpha, HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
-        val haloMid = Color.argb((haloAlpha * 0.4f).toInt(), HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
+        val haloMid = Color.argb((haloAlpha * 0.35f).toInt(), HALO_RGB[0], HALO_RGB[1], HALO_RGB[2])
         paint.shader = RadialGradient(
             0f, 0f, featherR / stretchX,
             intArrayOf(haloOuter, haloMid, Color.TRANSPARENT),
-            floatArrayOf(0f, 0.4f, 1f),
+            floatArrayOf(0f, 0.42f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawCircle(0f, 0f, featherR / stretchX, paint)
 
-        // 2) Dark soft core with feathered edge (main iOS look)
+        // 2) Dark soft core (main iOS look) — small, feathered
         val darkCore = Color.argb(coreAlpha, CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
-        val darkMid = Color.argb((coreAlpha * 0.45f).toInt(), CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
-        val darkR = max(coreR * 2.4f, featherR * 0.55f) / stretchX
+        val darkMid = Color.argb((coreAlpha * 0.42f).toInt(), CORE_RGB[0], CORE_RGB[1], CORE_RGB[2])
+        val darkR = max(coreR * 1.85f, featherR * 0.62f) / stretchX
         paint.shader = RadialGradient(
             0f, 0f, darkR,
             intArrayOf(darkCore, darkMid, Color.TRANSPARENT),
-            floatArrayOf(0f, 0.38f, 1f),
+            floatArrayOf(0f, 0.36f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawCircle(0f, 0f, darkR, paint)
