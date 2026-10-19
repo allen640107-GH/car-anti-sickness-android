@@ -15,7 +15,7 @@ import kotlin.math.sin
 
 /**
  * YouTube Short ground-truth Vehicle Motion Cues look-alike
- * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.6.
+ * (https://youtube.com/shorts/cl3lPLPKBJI) — v1.1.7.
  *
  * Motion model (iPhone VMC): one shared offset for the whole column,
  * critically/over-damped exponential follow — continuous glide with
@@ -63,10 +63,15 @@ class DotsOverlayView @JvmOverloads constructor(
         private const val MID_INWARD_FRACTION = 0.055f
         private const val DENSE_INWARD_FRACTION = 0.075f
 
-        private const val MAX_TRAVEL_Y_DP = 144f
-        private const val MAX_TRAVEL_X_DP = 20f
-        private const val GAIN_Y = 60f
-        private const val GAIN_X = 12.0f
+        private const val MAX_TRAVEL_Y_DP = 432f
+        /**
+         * Horizontal travel must be large enough to FEEL (Allen: 左右也要滑動).
+         * Drawn X is clamped to ±this from each edge base — was previously
+         * locked to a ~1-diameter band so offsetX was invisible.
+         */
+        private const val MAX_TRAVEL_X_DP = 60f
+        private const val GAIN_Y = 180f
+        private const val GAIN_X = 36.0f
 
         /**
          * Exponential smoothing toward sensor target (per frame @~60fps).
@@ -311,8 +316,9 @@ class DotsOverlayView @JvmOverloads constructor(
 
         val leftBaseX = edgeInset
         val rightBaseX = w - edgeInset
-        // Keep primaries near the physical edge (black L/R edge cues).
-        val primaryMargin = edgeInset + primaryDiam * 0.55f
+        // Allow real horizontal glide (±MAX_TRAVEL_X from edge base).
+        // Old marginMax clamp was ~1 diameter wide → offsetX looked like "only Y".
+        val xTravel = (MAX_TRAVEL_X_DP * density).coerceAtMost(w * 0.14f)
 
         val coreA = CORE_ALPHA_BASE + (CORE_ALPHA_MAX - CORE_ALPHA_BASE) * intensity
         val haloA = HALO_ALPHA_BASE + (HALO_ALPHA_MAX - HALO_ALPHA_BASE) * intensity
@@ -325,7 +331,7 @@ class DotsOverlayView @JvmOverloads constructor(
                 canvas, primaryYNorm[i],
                 primaryR, primaryR,
                 topPad, bottomPad, usable, h, w,
-                leftBaseX, rightBaseX, primaryMargin, primaryMargin,
+                leftBaseX, rightBaseX, xTravel,
                 sharedIdleY, sharedIdleX, c, hl
             )
         }
@@ -338,14 +344,11 @@ class DotsOverlayView @JvmOverloads constructor(
             if (envelope < 0.01f) continue
             val c = phasedAlpha(envelope * 0.95f, tau, midPhase[i])
             val hl = phasedAlpha(envelope * 0.60f, tau, midPhase[i] + 0.25f)
-            val midMarginL = leftBaseX + midInward + midRL * 1.2f
-            val midMarginR = w - (rightBaseX - midInward) + midRR * 1.2f
             drawDualPair(
                 canvas, midYNorm[i],
                 midRL, midRR,
                 topPad, bottomPad, usable, h, w,
-                leftBaseX + midInward, rightBaseX - midInward,
-                midMarginL.coerceAtLeast(midRL), midMarginR.coerceAtLeast(midRR),
+                leftBaseX + midInward, rightBaseX - midInward, xTravel,
                 sharedIdleY, sharedIdleX, c, hl
             )
         }
@@ -362,9 +365,7 @@ class DotsOverlayView @JvmOverloads constructor(
                 canvas, denseYNorm[i],
                 denseRL, denseRR,
                 topPad, bottomPad, usable, h, w,
-                leftBaseX + denseInward, rightBaseX - denseInward,
-                leftBaseX + denseInward + denseRL * 1.2f,
-                w - (rightBaseX - denseInward) + denseRR * 1.2f,
+                leftBaseX + denseInward, rightBaseX - denseInward, xTravel,
                 sharedIdleY, sharedIdleX, c, hl
             )
         }
@@ -381,6 +382,7 @@ class DotsOverlayView @JvmOverloads constructor(
     /**
      * Draw L+R dual-layer dots. Halo first (light), then dark core on top.
      * Shared [idleY]/[idleX] — whole column glides together (no per-dot sin).
+     * [xTravel] = max horizontal slide from each edge base (fixes invisible X).
      */
     private fun drawDualPair(
         canvas: Canvas,
@@ -394,8 +396,7 @@ class DotsOverlayView @JvmOverloads constructor(
         w: Float,
         leftBaseX: Float,
         rightBaseX: Float,
-        marginMaxL: Float,
-        marginMaxR: Float,
+        xTravel: Float,
         idleY: Float,
         idleX: Float,
         coreAlpha: Float,
@@ -405,10 +406,15 @@ class DotsOverlayView @JvmOverloads constructor(
         val yLeft = (yBase + offsetY + idleY).coerceIn(topPad, h - bottomPad)
         val yRight = (yBase + offsetY + idleY).coerceIn(topPad, h - bottomPad)
 
-        val lx = (leftBaseX + offsetX + idleX).coerceIn(radiusL, marginMaxL.coerceAtLeast(radiusL))
+        // Shared offsetX moves both columns together (iPhone cue layer).
+        // Clamp to ±xTravel from base so L/R stay near edges but X is visible.
+        val lx = (leftBaseX + offsetX + idleX).coerceIn(
+            (leftBaseX - xTravel).coerceAtLeast(radiusL),
+            (leftBaseX + xTravel).coerceAtMost(w * 0.45f)
+        )
         val rx = (rightBaseX + offsetX - idleX).coerceIn(
-            (w - marginMaxR).coerceAtMost(w - radiusR),
-            w - radiusR
+            (rightBaseX - xTravel).coerceAtLeast(w * 0.55f),
+            (rightBaseX + xTravel).coerceAtMost(w - radiusR)
         )
 
         // Left: halo then core
